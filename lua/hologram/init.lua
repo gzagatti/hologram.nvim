@@ -1,39 +1,27 @@
-local Image = require('hologram.image')
-local Job = require('hologram.job')
-local utils = require('hologram.utils')
+local Image = require 'hologram.image'
+local Window = require 'hologram.window'
+local utils = require 'hologram.utils'
+local terminal = require 'hologram.terminal'
+local config = require 'hologram.config'
 
 local hologram = {}
-
-local config = require('hologram.config')
-
+local window = {}
 local global_images = {}
 
 function hologram.setup(opts)
+
+    if vim.fn.executable('kitty') == 0 then
+        vim.api.nvim_err_writeln("Unable to find Kitty executable")
+        return
+    end
+
     opts = opts or {}
     opts = vim.tbl_deep_extend("force", config.DEFAULT_OPTS, opts)
 
     vim.g.hologram_extmark_ns = vim.api.nvim_create_namespace('hologram_extmark')
 
+    window = Window:new()
     hologram.create_autocmds()
-    hologram.get_window_size()
-end
-
-function hologram.get_window_size()
-    config.window_info.cols = vim.api.nvim_get_option('columns')
-    config.window_info.rows = vim.api.nvim_get_option('lines')
-    if vim.fn.executable('kitty') == 1 then
-        Job:new({
-            cmd = 'kitty',
-            args = {'+kitten', 'icat', '--print-window-size'},
-            on_data = function(data)
-                data = {data:match("(.+)x(.+)")}
-                config.window_info.xpixels = tonumber(data[1])
-                config.window_info.ypixels = tonumber(data[2])
-            end,
-        }):start()
-    else
-        vim.api.nvim_err_writeln("Unable to find Kitty executable")
-    end
 end
 
 -- Returns {top, bot, left, right} area of image that can be displayed.
@@ -42,12 +30,6 @@ function hologram.check_region(img)
     if not img or not (img.height and img.width) then
         return nil
     end
-
-    local cellsize = {
-        y = config.window_info.ypixels/config.window_info.rows,
-        x = config.window_info.xpixels/config.window_info.cols,
-    }
-    print(vim.inspect(cellsize))
 
     local wb = utils.winbounds(0)
 
@@ -58,12 +40,12 @@ function hologram.check_region(img)
 
     local row, col = img:pos()
     --distance in pixels to the image top
-    local top = math.max(0, (wintop-row)*cellsize.y)
+    local top = math.max(0, (wintop-row)*window:cell_height())
     -- distance in pixels to the image bottom
-    local bot = math.min(img.height, (winbot-row+img._virt_lines)*cellsize.y)
-    local right = wb.right*cellsize.x - col*cellsize.x
+    local bot = math.min(img.height, (winbot-row+img._virt_lines)*window:cell_height())
+    local right = wb.right*window:cell_width() - col*window:cell_width()
 
-    print('Distance to top '..top..', to bottom '..bot..', wintop '..wintop..', row '..row)
+    -- print('Distance to top '..top..', to bottom '..bot..', wintop '..wintop..', row '..row)
 
     if top > bot-1 then
         return nil
@@ -89,35 +71,50 @@ function hologram.get_ext_loclist(buf)
 end
 
 function hologram.update_images(buf)
-    if buf == 0 then buf = vim.api.nvim_get_current_buf() end
+  if buf == 0 then buf = vim.api.nvim_get_current_buf() end
 
-    for _, ext_loc in ipairs(hologram.get_ext_loclist(0)) do
-        local ext, _, _ = unpack(ext_loc)
+  -- print('updating images buffer ', buf)
 
-        local img = hologram.get_image(buf, ext)
-        local rg = hologram.check_region(img)
+  for _, ext_loc in ipairs(hologram.get_ext_loclist(0)) do
+    local ext, _, _ = unpack(ext_loc)
 
-        if not img then
-            return
-        end
+    local img = hologram.get_image(buf, ext)
+    local rg = hologram.check_region(img)
 
-        if rg then
-            img:adjust({
-                edge = {rg.left, rg.top},
-                crop = {rg.right, rg.bot},
-            })
-        else
-            img:delete({free = false})
-        end
+    if not img then
+      return
     end
+
+    if rg then
+      img:adjust({
+        edge = {rg.left, rg.top},
+        crop = {rg.right, rg.bot},
+      })
+    else
+      img:delete({free = false})
+    end
+  end
 end
 
-function hologram.clear_images(buf)
+function hologram.update_images_all_buffers()
+  bufs = {}
+  for i, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    bufs[i] = vim.api.nvim_win_get_buf(w)
+    print('added window ', w, 'buffer ', bufs[i])
+  end
+  for _, b in ipairs(bufs) do
+    print('fixing ', b)
+    hologram.update_images(b)
+  end
+  print('done')
+end
+
+function hologram.clear_images(buf, free)
     if buf == 0 then buf = vim.api.nvim_get_current_buf() end
 
     for _, i in ipairs(global_images) do
         if i:buf() == buf then
-            i:delete({free = true})
+            i:delete({free = free})
         end
     end
 end
@@ -126,9 +123,9 @@ function hologram.add_image(buf, source, row, col)
     if buf == 0 then buf = vim.api.nvim_get_current_buf() end
 
     local img = Image:new({
-        config = config,
         source = source,
         buf = buf,
+        win = window,
         row = row,
         col = col,
     })
@@ -173,7 +170,11 @@ end
 
 function hologram.create_autocmds()
     vim.cmd("augroup Hologram") vim.cmd("autocmd!")
-    vim.cmd("silent autocmd WinScrolled * :lua require('hologram').update_images(0)")
+    vim.cmd("silent autocmd WinClosed * :lua require('hologram').clear_images(0, false)")
+    vim.cmd("silent autocmd WinScrolled * :lua require('hologram').update_images_all_buffers()")
+    vim.cmd("silent autocmd BufWinEnter * :lua require('hologram').update_images(0)")
+    vim.cmd("silent autocmd BufWinLeave * :lua require('hologram').clear_images(0, false)")
+    -- vim.cmd("autocmd WinEnter * :echo expand('<amatch>')")
     vim.cmd("augroup END")
 end
 

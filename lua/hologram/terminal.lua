@@ -1,4 +1,5 @@
 local base64 = require('hologram.base64')
+local uv = require'luv'
 
 local terminal = {}
 local stdout = vim.loop.new_tty(1, false)
@@ -92,6 +93,47 @@ end
 
 function terminal.restore_cursor()
     stdout:write('\x1b[u')
+end
+
+function terminal.send_window_command(keys)
+  -- local ctrl = ''
+  -- local output = ''
+  -- local stdin = uv.new_tty(0, true)
+  -- local stdout = uv.new_tty(1, false)
+  -- print('stdin readable ', stdin:is_readable())
+  -- stdin:write('foo')
+  -- ct = 0
+  -- stdout:write('\x1b[16t', function(err) 
+  --   stdin:read_start(function(err, chunk)
+  --     print(chunk)
+  --     -- print('here from stdin')
+  --     -- print('chunk ', chunk)
+  --     stdout:write('\x1b[16t')
+  --     ct = ct + 1
+  --     if err then
+  --       print('error')
+  --     elseif chunk then
+  --       output = chunk
+  --     end
+  --     if ct > 1 then
+  --     print('closing')
+  --     stdin:close()
+  --     end
+  --   end)
+  -- end)
+  ffi = require'ffi'
+  ffi.cdef[[
+  int ioctl(int __fd, unsigned long int __request, ...);
+  typedef struct winsize {
+    unsigned short ws_row;
+    unsigned short ws_col;
+    unsigned short ws_xpixel;
+    unsigned short ws_ypixel;
+  };
+  ]]
+  sz = ffi.new('struct winsize')
+  ffi.C.ioctl(0, 21523, sz)
+  print(sz.ws_ypixel / sz.ws_row)
 end
 
 return terminal

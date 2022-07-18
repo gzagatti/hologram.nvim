@@ -22,9 +22,9 @@ function Image:new(opts)
 
     local obj = setmetatable({
         id = ext,
-        config = opts.config,
         source = opts.source,
         _buf = buf,
+        _win = opts.win,
         _row = opts.row,
         _col = opts.col,
     }, self)
@@ -50,10 +50,6 @@ function Image:transmit(opts)
     opts = opts or {}
     opts.medium = opts.medium or 'f'
     local set_case = opts.hide and string.lower or string.upper
-    local cellsize = {
-        y = self.config.window_info.ypixels/self.config.window_info.rows,
-        x = self.config.window_info.xpixels/self.config.window_info.cols,
-    }
     self._buf = opts.buf or self._buf
     self._row = opts.row or self._row
     self._col = opts.col or self._col
@@ -61,7 +57,7 @@ function Image:transmit(opts)
     print(vim.inspect(self))
 
     local virt_lines = {}
-    for i=1,math.ceil(178 / cellsize.y) do
+    for i=1,math.ceil(178 / self._win:cell_height()) do
       virt_lines[i] = { {''..i, 'LineNr' } }
       -- virt_lines[i] = { {'', 'Normal' } }
     end
@@ -157,9 +153,11 @@ function Image:delete(opts)
 
     if opts.free then
       vim.api.nvim_buf_del_extmark(0, vim.g.hologram_extmark_ns, self:ext())
-    -- else
-    --   vim.api.nvim_buf_set_extmark(self._buf, vim.g.hologram_extmark_ns,
-    --     self._row, self._col, { id=self.id })
+    else
+      print('here')
+      -- print("reseting mark ", self._row, self._col)
+      -- vim.api.nvim_buf_set_extmark(self._buf, vim.g.hologram_extmark_ns,
+      --   self._row, self._col, { id=self.id })
     end
 end
 
