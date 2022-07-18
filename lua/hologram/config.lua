@@ -1,3 +1,5 @@
+-- TODO: this has to become an object
+-- TODO: return cell size; window size on demand
 local config = {}
 
 config.DEFAULT_OPTS = {

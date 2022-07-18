@@ -55,6 +55,7 @@ function terminal.send_graphics_command(keys, payload)
         ctrl = ctrl..CTRL_KEYS[k]..'='..v..','
     end
     ctrl = ctrl:sub(0, -2) -- chop trailing comma
+    -- print(ctrl)
 
     if payload then
         if keys.transmission_type ~= 'd' then
@@ -62,6 +63,7 @@ function terminal.send_graphics_command(keys, payload)
         end
         payload = terminal.get_chunked(payload)
         for i=1,#payload do
+            -- print('i '..i..': '..ctrl..';'..payload[i])
             stdout:write('\x1b_G'..ctrl..';'..payload[i]..'\x1b\\')
             if i == #payload-1 then ctrl = 'm=0' else ctrl = 'm=1' end
         end
@@ -83,6 +85,7 @@ function terminal.get_chunked(str)
 end
 
 function terminal.move_cursor(col, row)
+    -- print('move cursor to '..row..':'..col)
     stdout:write('\x1b[s')
     stdout:write('\x1b['..row..':'..col..'H')
 end

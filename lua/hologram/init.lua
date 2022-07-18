@@ -1,5 +1,6 @@
 local Image = require('hologram.image')
 local Job = require('hologram.job')
+local utils = require('hologram.utils')
 
 local hologram = {}
 
@@ -46,16 +47,23 @@ function hologram.check_region(img)
         y = config.window_info.ypixels/config.window_info.rows,
         x = config.window_info.xpixels/config.window_info.cols,
     }
+    print(vim.inspect(cellsize))
+
+    local wb = utils.winbounds(0)
 
     local wintop = vim.fn.line('w0')
     local winbot = vim.fn.line('w$')
-    local winleft = 0
-    local winright = vim.fn.winwidth(0)
+    -- local winleft = 0
+    -- local winright = vim.fn.winwidth(0)
 
     local row, col = img:pos()
-    local top = math.max(winleft, (wintop-row)*cellsize.y)
-    local bot = math.min(img.height, (winbot-row+1)*cellsize.y)
-    local right = winright*cellsize.x - col*cellsize.x
+    --distance in pixels to the image top
+    local top = math.max(0, (wintop-row)*cellsize.y)
+    -- distance in pixels to the image bottom
+    local bot = math.min(img.height, (winbot-row+img._virt_lines)*cellsize.y)
+    local right = wb.right*cellsize.x - col*cellsize.x
+
+    print('Distance to top '..top..', to bottom '..bot..', wintop '..wintop..', row '..row)
 
     if top > bot-1 then
         return nil
@@ -118,14 +126,17 @@ function hologram.add_image(buf, source, row, col)
     if buf == 0 then buf = vim.api.nvim_get_current_buf() end
 
     local img = Image:new({
+        config = config,
         source = source,
         buf = buf,
-        row = row-1,
+        row = row,
         col = col,
     })
     img:transmit()
 
     global_images[#global_images+1] = img
+
+    return img
 end
 
 -- Return image in 'buf' linked to 'ext'

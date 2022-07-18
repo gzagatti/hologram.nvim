@@ -17,11 +17,16 @@ function Image:new(opts)
     opts.col = opts.col or cur_col
 
     local buf = vim.api.nvim_get_current_buf()
-    local ext = vim.api.nvim_buf_set_extmark(buf, vim.g.hologram_extmark_ns, opts.row, opts.col, {})
+    local ext = vim.api.nvim_buf_set_extmark(buf, vim.g.hologram_extmark_ns,
+      opts.row-1, opts.col-1, {})
 
     local obj = setmetatable({
         id = ext,
-        source = opts.source
+        config = opts.config,
+        source = opts.source,
+        _buf = buf,
+        _row = opts.row,
+        _col = opts.col,
     }, self)
 
     obj:identify()
@@ -29,10 +34,42 @@ function Image:new(opts)
     return obj
 end
 
+function Image:buf()
+  return self._buf
+end
+
+function Image:ext()
+  return self.id
+end
+
+function Image:pos()
+  return self._row, self._col
+end
+
 function Image:transmit(opts)
     opts = opts or {}
     opts.medium = opts.medium or 'f'
     local set_case = opts.hide and string.lower or string.upper
+    local cellsize = {
+        y = self.config.window_info.ypixels/self.config.window_info.rows,
+        x = self.config.window_info.xpixels/self.config.window_info.cols,
+    }
+    self._buf = opts.buf or self._buf
+    self._row = opts.row or self._row
+    self._col = opts.col or self._col
+
+    print(vim.inspect(self))
+
+    local virt_lines = {}
+    for i=1,math.ceil(178 / cellsize.y) do
+      virt_lines[i] = { {''..i, 'LineNr' } }
+      -- virt_lines[i] = { {'', 'Normal' } }
+    end
+
+    self._virt_lines = #virt_lines
+
+    local ext = vim.api.nvim_buf_set_extmark(self._buf, vim.g.hologram_extmark_ns,
+      self._row-1, self._col-1, { id=self.id, virt_lines=virt_lines })
 
     local keys = {
         image_id = self.id,
@@ -89,49 +126,40 @@ function Image:delete(opts)
 
     local set_case = opts.free and string.upper or string.lower
 
-    local keys_set = {}
+    local keys = {}
 
-    keys_set[#keys_set+1] = {
-        i = self.id,
-    }
+    keys.action = 'd'
 
-    if opts.all then
-        keys_set[#keys_set+1] = {
-            d = set_case('a'),
-        }
+    if opts.all == false then
+      keys.delete_action = set_case('i')
+      keys.image_id = self.id
     end
     if opts.z_index then
-        keys_set[#keys_set+1] = {
-            d = set_case('z'),
-            z = opts.z_index,
-        }
+        keys.delete_action = set_case('z')
+        keys.z_index = opts.z_index
     end
     if opts.col then
-        keys_set[#keys_set+1] = {
-            d = set_case('x'),
-            x = opts.col,
-        }
+        keys.delete_action = set_case('x')
+        keys.x_offset = opts.col
     end
     if opts.row then
-        keys_set[#keys_set+1] = {
-            d = set_case('y'),
-            y = opts.row,
-        }
+        keys.delete_action = set_case('y')
+        keys.y_offset = opts.row
     end
     if opts.cell then
-        keys_set[#keys_set+1] = {
-            d = set_case('p'),
-            x = opts.cell[1],
-            y = opts.cell[2],
-        }
+        keys.delete_action = set_case('p')
+        keys.cell_x_offset = opts.cell[1]
+        keys.cell_y_offset = opts.cell[2]
     end
 
-    for _, keys in ipairs(keys_set) do
-        terminal.send_graphics_command(keys)
-    end
+
+    terminal.send_graphics_command(keys)
 
     if opts.free then
-        vim.api.nvim_buf_del_extmark(0, vim.g.hologram_extmark_ns, self:ext())
+      vim.api.nvim_buf_del_extmark(0, vim.g.hologram_extmark_ns, self:ext())
+    -- else
+    --   vim.api.nvim_buf_set_extmark(self._buf, vim.g.hologram_extmark_ns,
+    --     self._row, self._col, { id=self.id })
     end
 end
 
@@ -161,10 +189,10 @@ end
 
 function image.bufpos(id, buf)
     if buf == nil then buf = 0 end
-
     local row, col = unpack(vim.api.nvim_buf_get_extmark_by_id(0,
         vim.g.hologram_extmark_ns, id, {}))
-    return col, row
+    -- nvim_buf_get_extmark_by_id returns a 0-index (row, col) tuple
+    return col + 1, row + 1
 end
 
 function image.winpos(id, win)
@@ -172,7 +200,9 @@ function image.winpos(id, win)
     local wb = utils.winbounds(win)
     local col, row = image.bufpos(id)
 
-    row = row-vim.fn.line('w0')
+    local virt = 1
+
+    row = row - vim.fn.line('w0') + virt
     row = row + wb.top
     col = col + wb.left
 
