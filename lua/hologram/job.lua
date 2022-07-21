@@ -19,13 +19,13 @@ function Job:start()
     local handle = vim.loop.spawn(self.cmd, {
         args = self.args,
         stdio = {self.stdin, self.stdout, self.stderr},
-    }, function()
+    }, function(code, signal)
         self:stop()
         self.safe_close(self.stdin)
         self.safe_close(self.stdout)
         self.safe_close(self.stderr)
         self.safe_close(handle)
-        self.on_done()
+        self.on_done(code, signal)
     end)
 
     self.stdout:read_start(function(err, data)

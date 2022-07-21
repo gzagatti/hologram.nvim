@@ -29,8 +29,6 @@ function Image:new(opts)
         _col = opts.col,
     }, self)
 
-    obj:identify()
-
     return obj
 end
 
@@ -54,10 +52,10 @@ function Image:transmit(opts)
     self._row = opts.row or self._row
     self._col = opts.col or self._col
 
-    print(vim.inspect(self))
+    -- print(vim.inspect(self))
 
     local virt_lines = {}
-    for i=1,math.ceil(178 / self._win:cell_height()) do
+    for i=1,math.ceil(self.height / self._win:cell_height()) do
       virt_lines[i] = { {''..i, 'LineNr' } }
       -- virt_lines[i] = { {'', 'Normal' } }
     end
@@ -163,19 +161,28 @@ end
 
 function Image:identify()
     -- Get image width + height
-    if vim.fn.executable('identify') == 1 then
-        Job:new({
-            cmd = 'identify',
-            args = {'-format', '%hx%w', self.source},
-            on_data = function(data)
-                data = {data:match("(.+)x(.+)")}
-                self.height = tonumber(data[1])
-                self.width  = tonumber(data[2])
-            end,
-        }):start()
+    if (self.identified == nil) then
+      if vim.fn.executable('identify') == 1 then
+          Job:new({
+              cmd = 'identify',
+              args = {'-format', '%hx%w', self.source},
+              on_data = vim.schedule_wrap(function(data)
+                  data = {data:match("(.+)x(.+)")}
+                  self.height = tonumber(data[1])
+                  self.width  = tonumber(data[2])
+                  self:transmit({})
+              end),
+              on_done = function(code, signal)
+                self.identified = code
+              end
+          }):start()
+      else
+          vim.api.nvim_err_writeln("Unable to run command 'identify'."..
+              " Make sure ImageMagick is installed.")
+          self.identified = -1
+      end
     else
-        vim.api.nvim_err_writeln("Unable to run command 'identify'."..
-            " Make sure ImageMagick is installed.")
+      self:transmit()
     end
 end
 
